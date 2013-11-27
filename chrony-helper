@@ -1,0 +1,72 @@
+#!/bin/bash
+
+
+config=/etc/chrony/chrony.conf
+keyfile=/etc/chrony/chrony.keys
+chronyc=/usr/bin/chronyc
+#dhclient_servers=/var/lib/dhclient/chrony.servers.*
+#service_name=chronyd.service
+
+get_key() {
+    awk '/^[ \t]*'$1'\>/ { print $2; exit }' < $keyfile
+}
+
+get_commandkeyid() {
+    awk '/^[ \t]*commandkey\>/ { keyid=$2 } END { print keyid }' < $config
+}
+
+chrony_command() {
+    commandkeyid=$(get_commandkeyid)
+    [ -z "$commandkeyid" ] && return 1
+    commandkey=$(get_key $commandkeyid)
+    [ -z "$commandkey" ] && return 2
+
+    $chronyc <<EOF
+password $commandkey
+$1
+EOF
+}
+
+
+generate_commandkey() {
+    commandkeyid=$(get_commandkeyid)
+    [ -z "$commandkeyid" ] && return 1
+    commandkey=$(get_key $commandkeyid)
+    [ -z "$commandkey" ] || return 0
+
+    commandkey=$(tr -c -d '[\041-\176]' < /dev/urandom | head -c 16)
+    [ -n "$commandkey" ] && echo "$commandkeyid $commandkey" >> $keyfile
+}
+
+add_dhclient_servers() {
+    command=$(cat $dhclient_servers 2> /dev/null |
+        while read server serverargs; do
+            echo "add server $server $serverargs"
+        done)
+    if [ -n "$command" ]; then
+        chrony_command "$command" &> /dev/null
+    fi
+}
+
+#is_running() {
+#    systemctl status chronyd.service &> /dev/null
+#}
+
+
+case "$1" in
+    generate-commandkey)
+        generate_commandkey
+        ;;
+#    add-dhclient-servers)
+#        add_dhclient_servers
+#        ;;
+    command)
+#        is_running && chrony_command "$2"
+        chrony_command "$2"
+        ;;
+    *)
+#        echo $"Usage: $0 {generate-commandkey|add-dhclient-servers|command}"
+        echo $"Usage: $0 {generate-commandkey|command}"
+        exit 2
+esac
+exit $?
