@@ -1,0 +1,12 @@
+/var/log/chrony/*.log {
+    missingok
+    compress
+    dateext
+    weekly
+    rotate 7
+    nocreate
+    sharedscripts
+    postrotate
+        /usr/local/bin/chrony-helper command cyclelogs > /dev/null 2>&1 || true
+    endscript
+}
